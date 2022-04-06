@@ -38,7 +38,9 @@ librarian::shelf(
   maps,
   mapdata,
   usmap,
-  scales
+  scales,
+  foreach,
+  caret
 )
 
 # tell here where we are so we can use it elsewhere

@@ -1,0 +1,431 @@
+---
+title: "PS3"
+author: "Sonali"
+date: "06/04/2022"
+output: md_document
+---
+
+###Probelm Set 3
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# installs the librarian package if you don't have it
+if (!("librarian" %in% rownames(utils::installed.packages()))) {
+  utils::install.packages("librarian")
+}
+
+# put all of the packages that you import here
+librarian::shelf( 
+  cran_repo = "https://cran.microsoft.com/", # Dallas, TX
+  ask = FALSE,
+  stats, # https://stackoverflow.com/questions/26935095/r-dplyr-filter-not-masking-base-filter#answer-26935536
+  here,
+  kableExtra,
+  rlang,
+  ggthemes,
+  tidyverse,
+  janitor,
+  magrittr,
+  glue,
+  lubridate,
+  haven,
+  snakecase,
+  sandwich,
+  lmtest,
+  gganimate,
+  gapminder,
+  stargazer,
+  snakecase,
+  rpart,
+  rpart.plot,
+  rsample,
+  randomForest,
+  modelr,
+  gbm,
+  pdp,
+  remotes,
+  urbnmapr,
+  ggmap,
+  maps,
+  mapdata,
+  usmap,
+  scales,
+  foreach,
+  caret
+)
+
+# tell here where we are so we can use it elsewhere
+here::i_am("Data-Mining-PS3/include.R")
+
+
+
+```
+
+
+## What Causes What?
+
+
+#Question 1:
+Doing so will not give the causality. Cities with more crime tend to have more cops. There is this hidden factor (endogenous) of how often does the city witness crime which also dictates the number of cops there. If the higher number of cops were in the city due to reasons unrelated to crime then we could have gotten a causal relation. 
+
+#Question 2:
+Column 1 shows the regression results without controlling for metro ridership and 2 shows with the control. The first column says that daily crime rate decreased by 7.3 points on a high alert day when compared to a non-high alert day and this can be attributed to increased cops on the streets but this does not hold the riders on metro fixed. The 2nd column shows that daily crime rate still reduces but by a marginally lower factor (6 points) on a high alert day when compared to non-high alert day HOLDING metro ridership constant. Therefore keeping the number  of passengers nearly same, we can say more cops lead to lower crime rate. 
+
+#Question 3:
+The question arose that whether there were fewer people on the streets of Washington due to the terrorism alert and therefore the crime rate has reduced. To control for this, they measured the ridership on metro and see if there were fewer “victims”. They found that with people remaining more or less same crime rate has reduced and therefore eliminating the possibility that the lower crime rate could be because of lower victims. 
+
+#Question 4:
+This tables shows interaction with one district in one bucket and all other districts of Washington in another bucket. The estimation is statistically significant in district 1 but not in other districts. This just says that we can draw no strong conclusion on the partial effect of other districts on high alert ON daily crime rate when controlled for metro ridership. It can be due to insufficient data or noisy data for other districts that led to insignificant results. 
+
+##Tree modeling: dengue cases
+
+Here we use three methods of tree modeling: CART (greedy growing and pruning), Random Forest and Gradient Boosting. We cross validate on training data while fitting the trees and then calculate the out of sample error (RMSE) using the testing data which is out validation sample in this case. 
+
+```{r}
+#modify the dataset and make ready to perform rest of the work
+dengue = read_csv(here("Data-Mining-PS3/Problem 2/dengue.csv"))
+dengue = na.omit(dengue)
+dengue$city = factor(dengue$city)
+dengue$season = factor(dengue$season)
+
+#split training and testing data
+dengue_split =  initial_split(dengue, prop=0.8)
+dengue_train = training(dengue_split)
+dengue_test  = testing(dengue_split)
+
+#CART
+#by defualt rpart takes 10 cv folds
+dengue_cart = rpart(total_cases ~ .,data=dengue_train, 
+                    control = rpart.control(cp = 0.00001, minsplit = 20))
+
+prune_1se = function(my_tree) {
+  out = as.data.frame(my_tree$cptable)
+  thresh = min(out$xerror + out$xstd)
+  cp_opt = max(out$CP[out$xerror <= thresh])
+  prune(my_tree, cp=cp_opt)
+}
+
+dengue_cart_prune = prune_1se(dengue_cart)
+
+#RandomForest
+dengue_forest = randomForest(total_cases ~ ., data=dengue_train, 
+                             importance = TRUE)
+
+
+#boosting
+dengue_boost = gbm(total_cases ~ ., 
+             data = dengue_train,
+             interaction.depth=4, n.trees=500, shrinkage=.05, cv.folds = 10)
+
+#tabular form of rmse
+cart =modelr::rmse(dengue_cart_prune, dengue_test)
+rf = modelr::rmse(dengue_forest, dengue_test)
+boost = modelr::rmse(dengue_boost, dengue_test)
+dengue_rmse = data.frame(round(cart,2), round(rf,2), round(boost,2))
+colnames(dengue_rmse) = c("CART","Random Forest","Gradient Boosting")
+rownames(dengue_rmse) = "Out of sample error"
+dengue_rmse %>%
+  kbl()%>%
+  kable_material_dark()
+
+```
+The table shows that random forest model gives lowest error and therefore we would prefer this model over CART and Boosting. Note that we dont do feature selection here as trees select the important features optimally. Since by default random forest considers 2/3rd of dataset for training and rest for testing we dont specify no of folds here. 
+
+
+Below are the compelxity parameter plots for all 3 models:
+
+```{r}
+
+#complexity paramete plots
+plotcp(dengue_cart)
+plot(dengue_forest)
+gbm.perf(dengue_boost)
+
+```
+
+Since Random Forest is the best model for the above problem we go ahead with this and plot partial dependence plots:
+```{r}
+#partial plots
+vi = varImpPlot(dengue_forest, type=1)
+partialPlot(dengue_forest, as.data.frame(dengue_test), 'specific_humidity', las=1)
+partialPlot(dengue_forest, as.data.frame(dengue_test), 'precipitation_amt', las=1)
+partialPlot(dengue_forest, as.data.frame(dengue_test), 'min_air_temp_k', las=1)
+
+```
+Since minimum air temperature appears to be a very important feature in the modeling (second most important) we chose to plot that. There is a sharp increase in predicted cases at around 297 k. 
+
+
+##Predictive model building: green certification
+
+To test out what would be the best model we try experimenting with a linear model, K-Nearest neighbours, CART, Random Forest and Gradient Boosted. We then measure the out of sample accuracy for each of these models and pick the least inaccurate model for further analysis. 
+First, we need to do some cleaning activity:
+•	We introduce a variable revenue = rent*leasing_rate  which is our predictor variable for all the models used. 
+•	We also collapse LEED and Energystar rating into one (green) for purpose of this analysis. We can keep them separate too if we wish to do further analysis on different charaterstics of the two ratings. 
+•	Lastly we convert NA or missing value to 0 so that the models can run smoothly. 
+This model has way too many features and therefore we use stepwise methodology to determine the optimal set of features. Lasso regularization can also be used for the same purpose. For this problem we do forward stepwise simulation. 
+According to stepwise function the following features and their interactions should be considered:
+cluster , size , empl_gr , stories , age , renovated , class_a , class_b , green_rating , net , amenities , cd_total_07 , hd_total07 , total_dd_07 , Precipitation , Gas_Costs , Electricity_Costs , City_Market_Rent , green
+Note that we need to do feature selection only for linear model and KNN. While KNN does require us to specify interactions unlike linear model, we still have to mention the features to be used. For tree models this is not required as the tree algorithm chooses optimal features and uses them more often than the others. It is still an option available but here we haven’t done that. 
+For CART modelling we stick to 1 SE rule. All the tree models use cross validation (some by default some have to be specified). All the cross-validation is done on the training set and test set is treated as the validation set. 
+
+```{r}
+#modify the dataset and make it ready for working
+greenbuildings = read_csv(here("Data-Mining-PS3/Problem 3/greenbuildings.csv")) %>%
+  mutate(revenue = Rent*leasing_rate) %>%
+  mutate(green = ifelse(LEED | Energystar, 1, 0)) 
+greenbuildings[is.na(greenbuildings)] = 0
+#split training and testing data
+greenbuildings_split =  initial_split(greenbuildings, prop=0.8)
+greenbuildings_train = training(greenbuildings_split)
+greenbuildings_test  = testing(greenbuildings_split)
+
+#different modeling approaches to find the best model
+#we look at stepwise-LM, stepwise-KNN, CART, random forest, gbm
+#stepwise
+#greenbuildings_baseline = lm(revenue ~ . - CS_PropertyID - LEED - #Energystar - Rent - leasing_rate,
+#                            data = greenbuildings_train)
+#greenbuildings_stepwise = step(greenbuildings_baseline,
+#                               direction = "forward",
+#                               scope = ~(. - CS_PropertyID - LEED - #Energystar - Rent - leasing_rate)^2)
+greenbuildings_stepwise_lm = lm(revenue ~ cluster + size + empl_gr + stories + age + renovated + 
+                                  class_a + class_b + green_rating + net + amenities + cd_total_07 + 
+                                  hd_total07 + total_dd_07 + Precipitation + Gas_Costs + Electricity_Costs + 
+                                  City_Market_Rent + green + size:City_Market_Rent + cluster:size + 
+                                  stories:class_a + cluster:City_Market_Rent + size:Electricity_Costs + 
+                                  stories:total_dd_07 + empl_gr:class_a + total_dd_07:City_Market_Rent + 
+                                  total_dd_07:Precipitation + Precipitation:Electricity_Costs + 
+                                  green_rating:amenities + renovated:Precipitation + class_b:Electricity_Costs + 
+                                  renovated:Gas_Costs + total_dd_07:Gas_Costs + renovated:City_Market_Rent + 
+                                  age:City_Market_Rent + age:Electricity_Costs + stories:renovated + 
+                                  size:renovated + stories:class_b + renovated:total_dd_07 + 
+                                  size:stories + size:age + age:class_a + amenities:Electricity_Costs + 
+                                  cd_total_07:Gas_Costs + class_a:Gas_Costs + class_b:total_dd_07 + 
+                                  cluster:Electricity_Costs + amenities:Precipitation + amenities:Gas_Costs + 
+                                  class_b:City_Market_Rent + size:hd_total07 + cluster:hd_total07 + 
+                                  net:total_dd_07 + class_a:amenities + empl_gr:Gas_Costs + 
+                                  stories:cd_total_07 + stories:age + size:cd_total_07 + total_dd_07:Electricity_Costs + 
+                                  size:Gas_Costs + green_rating:hd_total07, data = greenbuildings_train)
+
+
+# knn model
+knn_grid = seq(1, 500, by=5)
+greenbuildings_knn_grid = foreach(k = knn_grid, .combine='rbind') %do% {
+  model = knnreg(revenue ~ cluster + size + empl_gr + stories + age + renovated + 
+                   class_a + class_b + green_rating + net + amenities + cd_total_07 + 
+                   hd_total07 + total_dd_07 + Precipitation + Gas_Costs + Electricity_Costs + 
+                   City_Market_Rent + green, k=k, data = greenbuildings_train)
+  rms = modelr::rmse(model, greenbuildings_test)
+  c(k=k, err=rms)
+} %>% as.data.frame
+knn = min(greenbuildings_knn_grid$err)
+
+
+#CART
+greenbuildings_cart = rpart(revenue ~ . - CS_PropertyID - LEED - Energystar - Rent - leasing_rate,data=greenbuildings_train, 
+                       control = rpart.control(cp = 0.00001, minsplit = 20))
+
+# cp_1se = function(my_tree) {
+#   out = as.data.frame(my_tree$cptable)
+#   thresh = min(out$xerror + out$xstd)
+#   cp_opt = max(out$CP[out$xerror <= thresh])
+#   cp_opt
+# }
+# 
+# cp_1se(greenbuildings_cart)
+
+prune_1se = function(my_tree) {
+  out = as.data.frame(my_tree$cptable)
+  thresh = min(out$xerror + out$xstd)
+  cp_opt = max(out$CP[out$xerror <= thresh])
+  prune(my_tree, cp=cp_opt)
+}
+
+greenbuildings_cart_prune = prune_1se(greenbuildings_cart)
+
+#RandomForest
+greenbuildings_forest = randomForest(revenue ~ . - CS_PropertyID - LEED - Energystar - Rent - leasing_rate, data=greenbuildings_train, 
+                                importance = TRUE)
+
+
+#boosting
+greenbuildings_boost = gbm(revenue ~ . - CS_PropertyID - LEED - Energystar - Rent - leasing_rate, 
+                      data = greenbuildings_train,
+                      interaction.depth=4, n.trees=500, shrinkage=.05, cv.folds = 10)
+
+lm = modelr::rmse(greenbuildings_stepwise_lm, greenbuildings_test)
+cart = modelr::rmse(greenbuildings_cart_prune, greenbuildings_test)
+rf = modelr::rmse(greenbuildings_forest, greenbuildings_test)
+boost = modelr::rmse(greenbuildings_boost, greenbuildings_test)
+
+greenbuildings_rmse = data.frame(round(lm,2),round(knn,2),round(cart,2), round(rf,2), round(boost,2))
+colnames(greenbuildings_rmse) = rbind("Linear Model","KNN","CART","Random Forest","Gradient Boosting")
+rownames(greenbuildings_rmse) = "Out of sample error"
+greenbuildings_rmse %>%
+  kbl()%>%
+  kable_material_dark()
+```
+
+Visibly, random forest is the best amongst all. 
+
+```{r}
+vi = varImpPlot(greenbuildings_forest, type=1)
+```
+Variable importance plot gives an interesting story. I want to note an interesting observation here. When I included property ID variable in the model (which is nothing but unique identifier of every entry in the data set I found it to be most useful feature as per the variable importance plot but this didn’t seem meaningful. This is because including the unique IDs is similar to regressing the predictor variable on itself (in language of regression) and it therefore diminishes the importance of other features disproportionately. To fix for this I remove this variable in all our models. 
+
+```{r}
+partialPlot(greenbuildings_forest, as.data.frame(greenbuildings_test), 'green', las=1)
+df = greenbuildings_test %>%
+  select(revenue, green) %>%
+  mutate(revenue_hat = predict(greenbuildings_forest, newdata = greenbuildings_test))
+a1 = mean(subset(df, green==1)$revenue_hat)
+a0 = mean(subset(df, green==0)$revenue_hat)
+avg_rental_chng = a1-a0
+avg_rental_chng
+```
+
+On an average rental income from houses that are green certified is higher than houses that are not certified by nearly $330 per year which is not a huge difference to an owner who is not bothered about certification. 
+The variable importance plot also shows that the green rating is way below in the grid implying it is not a very important feature while modelling the prediction. Which in other words can be said that if I were to remove this feature from the model it would cause least reduction in out of sample error ergo this feature does not have an important role to play when looking at rental income. This is not good news for climate fanatics. 
+
+Also, since we multiply the two covariates high rent and low leasing and high leasing an low rent would give the same effect. That effect can’t be isolated in this model. 
+Looking at some more partial dependence plots below:
+
+```{r}
+partialPlot(greenbuildings_forest, as.data.frame(greenbuildings_test), 'size', las=1)
+partialPlot(greenbuildings_forest, as.data.frame(greenbuildings_test), 'age', las=1)
+partialPlot(greenbuildings_forest, as.data.frame(greenbuildings_test), 'City_Market_Rent', las=1)
+partialPlot(greenbuildings_forest, as.data.frame(greenbuildings_test), 'stories', las=1)
+partialPlot(greenbuildings_forest, as.data.frame(greenbuildings_test), 'amenities', las=1)
+partialPlot(greenbuildings_forest, as.data.frame(greenbuildings_test), 'class_a', las=1)
+partialPlot(greenbuildings_forest, as.data.frame(greenbuildings_test), 'cluster', las=1)
+```
+
+While we see these, we should be mindful that classification features have no meaning for values between 0 and 1. They can either be 0 or 1. 
+The partial plots reflect pretty much what we expect – higher age lower rent, more size increases rent, city market rent is an almost upward trend. 
+In conclusion, random forest model performs the best and with least input unlike other tree models.  It also very conveniently does not require feature selection (which most tree models don’t). the only risk is computational time but otherwise it drastically reduces the time involved in making the model. Once the model is in place we can move to next set of interpretations and analysis which requires more time and manual effort. The other fact that stands out is “greenification” of houses has a long way to go. 
+
+
+##Predictive model building: California housing
+
+Here we explore 3 different models to come up with the best predictive model that can give least out of sample error. We use CART model, random forest and gradient boosting. All cross validation is done on the training test and the test set is used as the validation set. We are predicting median market value of all households in California. For this purpose, we use all the features to begin with and let the trees decide the important features. 
+
+As per out of sample accuracy, random forest trumps to be the best model. 
+
+```{r}
+cahousing = read_csv(here("Data-Mining-PS3/Problem 4/CAhousing.csv"))
+#split training and testing data
+cahousing_split =  initial_split(cahousing, prop=0.8)
+cahousing_train = training(cahousing_split)
+cahousing_test  = testing(cahousing_split)
+
+#CART
+cahousing_cart = rpart(medianHouseValue ~ .,data=cahousing_train, 
+                    control = rpart.control(cp = 0.00001, minsplit = 20))
+
+# cp_1se = function(my_tree) {
+#   out = as.data.frame(my_tree$cptable)
+#   thresh = min(out$xerror + out$xstd)
+#   cp_opt = max(out$CP[out$xerror <= thresh])
+#   cp_opt
+# }
+# 
+# cp_1se(cahousing_cart)
+
+prune_1se = function(my_tree) {
+  out = as.data.frame(my_tree$cptable)
+  thresh = min(out$xerror + out$xstd)
+  cp_opt = max(out$CP[out$xerror <= thresh])
+  prune(my_tree, cp=cp_opt)
+}
+
+cahousing_cart_prune = prune_1se(cahousing_cart)
+
+#RandomForest
+cahousing_forest = randomForest(medianHouseValue ~ ., data=cahousing_train, 
+                             importance = TRUE)
+
+
+#boosting
+cahousing_boost = gbm(medianHouseValue ~ ., 
+                   data = cahousing_train,
+                   interaction.depth=4, n.trees=500, shrinkage=.05, cv.folds = 10)
+
+
+
+cart=modelr::rmse(cahousing_cart_prune, cahousing_test)
+rf=modelr::rmse(cahousing_forest, cahousing_test)
+boost=modelr::rmse(cahousing_boost, cahousing_test)
+
+cahousing_rmse = data.frame(round(cart,2), round(rf,2), round(boost,2))
+colnames(cahousing_rmse) = c("CART","Random Forest","Gradient Boosting")
+rownames(cahousing_rmse) = "Out of sample error"
+cahousing_rmse %>%
+  kbl()%>%
+  kable_material_dark()
+```
+
+We can also take a look at the complexity parameter plots for all 3 models. 
+
+```{r}
+plotcp(cahousing_cart)
+plot(cahousing_forest)
+gbm.perf(cahousing_boost)
+vi = varImpPlot(cahousing_forest, type=1)
+```
+
+Variable importance plot gives an interesting view. Income and house age seem to very important as expected. Note that longitude and latitude are more important in prediction than number of bedrooms and rooms. The longitude and latitude in this case give us an indication of the county is which the housing is located. Roughly translating to the fact that market value depends on location.
+
+```{r}
+partialPlot(cahousing_forest, as.data.frame(cahousing_test), 'medianIncome', las=1)
+partialPlot(cahousing_forest, as.data.frame(cahousing_test), 'housingMedianAge', las=1)
+partialPlot(cahousing_forest, as.data.frame(cahousing_test), 'population', las=1)
+partialPlot(cahousing_forest, as.data.frame(cahousing_test), 'latitude', las=1)
+partialPlot(cahousing_forest, as.data.frame(cahousing_test), 'longitude', las=1)
+partialPlot(cahousing_forest, as.data.frame(cahousing_test), 'totalBedrooms', las=1)
+partialPlot(cahousing_forest, as.data.frame(cahousing_test), 'households', las=1)
+partialPlot(cahousing_forest, as.data.frame(cahousing_test), 'totalRooms', las=1)
+```
+
+Below are predictions from the model plotted on California map:
+
+```{r}
+yhat_rf = predict(cahousing_forest, cahousing_test)
+resid_rf = yhat_rf - cahousing$medianHouseValue
+
+df = data.frame(cbind(LAT=cahousing_test$latitude, LONG=cahousing_test$longitude,
+                VALUE=cahousing_test$medianHouseValue,yhat_rf,resid_rf)) %>%
+  mutate(group = 1)
+
+states = map_data("state")
+ca_df = subset(states, region == "california")
+counties = map_data("county")
+ca_county = subset(counties, region == "california")
+options(scipen = 999)
+ggplot(data = ca_df, mapping = aes(x = lat, y = long, group = group)) + 
+  coord_fixed(1.3) + 
+  geom_polygon(color = "black", fill = "gray") +
+  geom_polygon(data = ca_county, fill = NA, color = "black") +
+  geom_point(data = df, aes(x=LAT, y=LONG, color = resid_rf))+
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(x="Latitude", y="Longitude", title = "Model's Residual between the actual and predicted housing median value", color = "Residual")
+
+
+ggplot(data = ca_df, mapping = aes(x = lat, y = long, group = group)) + 
+  coord_fixed(1.3) + 
+  geom_polygon(color = "black", fill = "gray") +
+  geom_polygon(data = ca_county, fill = NA, color = "black") +
+  geom_polygon(color = "black", fill = NA)+
+  geom_point(data = df, aes(x=LAT, y=LONG, color = yhat_rf))+
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(x="Latitude", y="Longitude", title = "Predicted Median Market Value of Households in California", color = "Predicted Median Value")
+
+ggplot(data = ca_df, mapping = aes(x = lat, y = long, group = group)) + 
+  coord_fixed(1.3) + 
+  geom_polygon(color = "black", fill = "gray") +
+  geom_polygon(data = ca_county, fill = NA, color = "black") +
+  geom_polygon(color = "black", fill = NA)+
+  geom_point(data = df, aes(x=LAT, y=LONG, color = VALUE))+
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(x="Latitude", y="Longitude", title = "Median Market value of households in California", color = "Actual Median Value")
+
+}
