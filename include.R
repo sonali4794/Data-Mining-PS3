@@ -31,8 +31,16 @@ librarian::shelf(
   randomForest,
   modelr,
   gbm,
-  pdp
+  pdp,
+  remotes,
+  urbnmapr,
+  ggmap,
+  maps,
+  mapdata,
+  usmap,
+  scales
 )
 
 # tell here where we are so we can use it elsewhere
 here::i_am("Data-Mining-PS3/include.R")
+

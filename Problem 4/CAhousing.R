@@ -34,7 +34,7 @@ cahousing_forest = randomForest(medianHouseValue ~ ., data=cahousing_train,
 #boosting
 cahousing_boost = gbm(medianHouseValue ~ ., 
                    data = cahousing_train,
-                   interaction.depth=4, n.trees=500, shrinkage=.05)
+                   interaction.depth=4, n.trees=500, shrinkage=.05, cv.folds = 10)
 
 plotcp(cahousing_cart)
 plot(cahousing_forest)
@@ -53,4 +53,54 @@ partialPlot(cahousing_forest, cahousing_test, 'longitude', las=1)
 partialPlot(cahousing_forest, cahousing_test, 'totalBedrooms', las=1)
 partialPlot(cahousing_forest, cahousing_test, 'households', las=1)
 partialPlot(cahousing_forest, cahousing_test, 'totalRooms', las=1)
+
+yhat_rf = predict(cahousing_forest, cahousing_test)
+resid_rf = yhat_rf - cahousing$medianHouseValue
+
+df = data.frame(cbind(LAT=cahousing_test$latitude, LONG=cahousing_test$longitude,
+                VALUE=cahousing_test$medianHouseValue,yhat_rf,resid_rf))
+head(df)
+ggplot(df) +
+  geom_point(aes(x=LAT, y=LONG, color = VALUE))+
+  scale_color_continuous(type="viridis")
+
+ggplot(df) +
+  geom_point(aes(x=LAT, y=LONG, color = yhat_rf))+
+  scale_color_continuous(type="viridis")
+
+ggplot(df) +
+  geom_point(aes(x=LAT, y=LONG, color = resid_rf))+
+  scale_color_continuous(type="viridis")
+
+ca_df = subset(states, region == "california")
+counties = map_data("county")
+ca_county = subset(counties, region == "california")
+
+ggplot(data = ca_df, mapping = aes(x = lat, y = long, group = group)) + 
+  coord_fixed(1.3) + 
+  geom_polygon(color = "black", fill = "gray") +
+  geom_polygon(data = ca_county, fill = NA, color = "black") +
+  geom_polygon(color = "black", fill = NA)+
+  geom_point(data = df, aes(x=LAT, y=LONG, color = resid_rf))+
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(x="Latitude", y="Longitude", title = "Residual", color = "Residual")
+
+ggplot(data = ca_df, mapping = aes(x = lat, y = long, group = group)) + 
+  coord_fixed(1.3) + 
+  geom_polygon(color = "black", fill = "gray") +
+  geom_polygon(data = ca_county, fill = NA, color = "black") +
+  geom_polygon(color = "black", fill = NA)+
+  geom_point(data = df, aes(x=LAT, y=LONG, color = yhat_rf))+
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(x="Latitude", y="Longitude", title = "Residual", color = "Predicted Median Value")
+
+ggplot(data = ca_df, mapping = aes(x = lat, y = long, group = group)) + 
+  coord_fixed(1.3) + 
+  geom_polygon(color = "black", fill = "gray") +
+  geom_polygon(data = ca_county, fill = NA, color = "black") +
+  geom_polygon(color = "black", fill = NA)+
+  geom_point(data = df, aes(x=LAT, y=LONG, color = VALUE))+
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(x="Latitude", y="Longitude", title = "Residual", color = "Actual Median Value")
+
 

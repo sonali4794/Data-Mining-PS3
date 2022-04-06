@@ -37,7 +37,7 @@ dengue_forest = randomForest(total_cases ~ ., data=dengue_train,
 #boosting
 dengue_boost = gbm(total_cases ~ ., 
              data = dengue_train,
-             interaction.depth=4, n.trees=500, shrinkage=.05)
+             interaction.depth=4, n.trees=500, shrinkage=.05, cv.folds = 10)
 
 plotcp(dengue_cart)
 plot(dengue_forest)
