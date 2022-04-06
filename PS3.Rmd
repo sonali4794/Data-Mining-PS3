@@ -427,5 +427,5 @@ ggplot(data = ca_df, mapping = aes(x = lat, y = long, group = group)) +
   geom_point(data = df, aes(x=LAT, y=LONG, color = VALUE))+
   scale_color_gradient(low = "blue", high = "red") +
   labs(x="Latitude", y="Longitude", title = "Median Market value of households in California", color = "Actual Median Value")
+```
 
-}
