@@ -2,13 +2,15 @@
 title: "PS3"
 author: "Sonali"
 date: "06/04/2022"
-output: md_document
+output:
+  html_document:
+    variant: markdown_github
 ---
 
 ###Probelm Set 3
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE)
 
 # installs the librarian package if you don't have it
 if (!("librarian" %in% rownames(utils::installed.packages()))) {
@@ -83,6 +85,7 @@ This tables shows interaction with one district in one bucket and all other dist
 Here we use three methods of tree modeling: CART (greedy growing and pruning), Random Forest and Gradient Boosting. We cross validate on training data while fitting the trees and then calculate the out of sample error (RMSE) using the testing data which is out validation sample in this case. 
 
 ```{r}
+knitr::opts_chunk$set(cache = TRUE)
 #modify the dataset and make ready to perform rest of the work
 dengue = read_csv(here("Data-Mining-PS3/Problem 2/dengue.csv"))
 dengue = na.omit(dengue)
@@ -136,7 +139,7 @@ The table shows that random forest model gives lowest error and therefore we wou
 Below are the compelxity parameter plots for all 3 models:
 
 ```{r}
-
+knitr::opts_chunk$set(cache = TRUE)
 #complexity paramete plots
 plotcp(dengue_cart)
 plot(dengue_forest)
@@ -146,6 +149,7 @@ gbm.perf(dengue_boost)
 
 Since Random Forest is the best model for the above problem we go ahead with this and plot partial dependence plots:
 ```{r}
+knitr::opts_chunk$set(cache = TRUE)
 #partial plots
 vi = varImpPlot(dengue_forest, type=1)
 partialPlot(dengue_forest, as.data.frame(dengue_test), 'specific_humidity', las=1)
@@ -170,6 +174,7 @@ Note that we need to do feature selection only for linear model and KNN. While K
 For CART modelling we stick to 1 SE rule. All the tree models use cross validation (some by default some have to be specified). All the cross-validation is done on the training set and test set is treated as the validation set. 
 
 ```{r}
+knitr::opts_chunk$set(cache = TRUE)
 #modify the dataset and make it ready for working
 greenbuildings = read_csv(here("Data-Mining-PS3/Problem 3/greenbuildings.csv")) %>%
   mutate(revenue = Rent*leasing_rate) %>%
@@ -269,11 +274,13 @@ greenbuildings_rmse %>%
 Visibly, random forest is the best amongst all. 
 
 ```{r}
+knitr::opts_chunk$set(cache = TRUE)
 vi = varImpPlot(greenbuildings_forest, type=1)
 ```
 Variable importance plot gives an interesting story. I want to note an interesting observation here. When I included property ID variable in the model (which is nothing but unique identifier of every entry in the data set I found it to be most useful feature as per the variable importance plot but this didn’t seem meaningful. This is because including the unique IDs is similar to regressing the predictor variable on itself (in language of regression) and it therefore diminishes the importance of other features disproportionately. To fix for this I remove this variable in all our models. 
 
 ```{r}
+knitr::opts_chunk$set(cache = TRUE)
 partialPlot(greenbuildings_forest, as.data.frame(greenbuildings_test), 'green', las=1)
 df = greenbuildings_test %>%
   select(revenue, green) %>%
@@ -291,6 +298,7 @@ Also, since we multiply the two covariates high rent and low leasing and high le
 Looking at some more partial dependence plots below:
 
 ```{r}
+knitr::opts_chunk$set(cache = TRUE)
 partialPlot(greenbuildings_forest, as.data.frame(greenbuildings_test), 'size', las=1)
 partialPlot(greenbuildings_forest, as.data.frame(greenbuildings_test), 'age', las=1)
 partialPlot(greenbuildings_forest, as.data.frame(greenbuildings_test), 'City_Market_Rent', las=1)
@@ -312,6 +320,7 @@ Here we explore 3 different models to come up with the best predictive model tha
 As per out of sample accuracy, random forest trumps to be the best model. 
 
 ```{r}
+knitr::opts_chunk$set(cache = TRUE)
 cahousing = read_csv(here("Data-Mining-PS3/Problem 4/CAhousing.csv"))
 #split training and testing data
 cahousing_split =  initial_split(cahousing, prop=0.8)
@@ -367,6 +376,7 @@ cahousing_rmse %>%
 We can also take a look at the complexity parameter plots for all 3 models. 
 
 ```{r}
+knitr::opts_chunk$set(cache = TRUE)
 plotcp(cahousing_cart)
 plot(cahousing_forest)
 gbm.perf(cahousing_boost)
@@ -376,6 +386,7 @@ vi = varImpPlot(cahousing_forest, type=1)
 Variable importance plot gives an interesting view. Income and house age seem to very important as expected. Note that longitude and latitude are more important in prediction than number of bedrooms and rooms. The longitude and latitude in this case give us an indication of the county is which the housing is located. Roughly translating to the fact that market value depends on location.
 
 ```{r}
+knitr::opts_chunk$set(cache = TRUE)
 partialPlot(cahousing_forest, as.data.frame(cahousing_test), 'medianIncome', las=1)
 partialPlot(cahousing_forest, as.data.frame(cahousing_test), 'housingMedianAge', las=1)
 partialPlot(cahousing_forest, as.data.frame(cahousing_test), 'population', las=1)
@@ -389,6 +400,7 @@ partialPlot(cahousing_forest, as.data.frame(cahousing_test), 'totalRooms', las=1
 Below are predictions from the model plotted on California map:
 
 ```{r}
+knitr::opts_chunk$set(cache = TRUE)
 yhat_rf = predict(cahousing_forest, cahousing_test)
 resid_rf = yhat_rf - cahousing$medianHouseValue
 
